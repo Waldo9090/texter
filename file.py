@@ -27,34 +27,43 @@ def send_imessage(phone_number, message_text):
     except Exception as e:
         print(f"Failed to send message to {phone_number}: {e}")
 
-# Function to process invites in all documents in the 'Invites' collection
-def process_all_invites():
+# Function to process an invite document
+def process_invite(doc_snapshot):
+    doc_data = doc_snapshot.to_dict()
+    if doc_data.get('completed') != True:
+        username = doc_data.get('userName')
+        invites = doc_data.get('invites', [])
+
+        for invite in invites:
+            recipient_name = invite.get('recipientName')
+            phone_number = invite.get('recipientPhoneNumber')
+
+            # Personalize the message
+            message = f"Hey {recipient_name} - {username} just sent you a friend request on SwoleAI! Join the social fitness app and compete with friends👇\n\n{share_link}"
+
+            # Send the iMessage
+            send_imessage(phone_number, message)
+
+        # Mark the document as completed
+        doc_snapshot.reference.update({'completed': True})
+        print(f"Marked document {doc_snapshot.id} as completed.")
+    else:
+        print(f"Document {doc_snapshot.id} is already marked as completed.")
+
+# Attach a listener to the 'Invites' collection
+def listen_for_invites():
     invites_ref = db.collection('Invites')
-    docs = invites_ref.stream()
+    def on_snapshot(col_snapshot, changes, read_time):
+        for change in changes:
+            if change.type.name == 'ADDED' or change.type.name == 'MODIFIED':
+                process_invite(change.document)
+    invites_ref.on_snapshot(on_snapshot)
 
-    for doc in docs:
-        doc_data = doc.to_dict()
-        
-        # Check if 'completed' field exists and is set to True
-        if doc_data.get('completed') != True:
-            username = doc_data.get('userName')
-            invites = doc_data.get('invites', [])
+# Start listening for invites
+print("Listening for new invites...")
+listen_for_invites()
 
-            for invite in invites:
-                recipient_name = invite.get('recipientName')
-                phone_number = invite.get('recipientPhoneNumber')
-                
-                # Use full name for personalization
-                message = f"Hey {recipient_name} - {username} just sent you a friend request on SwoleAI! Join the social fitness app and compete with friends👇\n\n{share_link}"
-                
-                # Send the iMessage
-                send_imessage(phone_number, message)
-            
-            # Update document to set 'completed' to True
-            doc.reference.update({'completed': True})
-            print(f"Marked document {doc.id} as completed.")
-        else:
-            print(f"Document {doc.id} is already marked as completed.")
-
-# Process all invites in the 'Invites' collection
-process_all_invites()
+# Keep the script running
+import time
+while True:
+    time.sleep(60)
